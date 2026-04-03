@@ -14,7 +14,7 @@ class ClueHarvester
      */
     public function harvest(Crossword $crossword): void
     {
-        $result = $this->numberer->number($crossword->grid, $crossword->width, $crossword->height);
+        $result = $this->numberer->number($crossword->grid, $crossword->width, $crossword->height, $crossword->styles ?? []);
 
         $entries = [];
 

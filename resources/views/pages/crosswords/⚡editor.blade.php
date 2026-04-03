@@ -416,14 +416,19 @@ new #[Title('Crossword Editor')] class extends Component {
                     :aria-label="'Crossword grid, ' + width + ' columns by ' + height + ' rows'"
                 >
                     <div
-                        class="grid border border-zinc-800 dark:border-zinc-300"
+                        class="grid border border-zinc-800 dark:border-zinc-300 [--bar-color:var(--color-zinc-800)] dark:[--bar-color:var(--color-zinc-300)]"
                         :style="'grid-template-columns: repeat(' + width + ', 1fr);'"
                     >
                         <template x-for="(row, rowIdx) in grid" :key="'row-' + rowIdx">
                             <template x-for="(cell, colIdx) in row" :key="'cell-' + rowIdx + '-' + colIdx">
                                 <div
                                     x-on:click="selectCell(rowIdx, colIdx)"
+                                    x-on:contextmenu.prevent="openContextMenu(rowIdx, colIdx, $event)"
+                                    x-on:touchstart.passive="startLongPress(rowIdx, colIdx, $event)"
+                                    x-on:touchend="cancelLongPress()"
+                                    x-on:touchmove="cancelLongPress()"
                                     :class="[cellClasses(rowIdx, colIdx), isVoid(rowIdx, colIdx) ? '' : 'border border-zinc-300 dark:border-zinc-600']"
+                                    :style="cellBarStyles(rowIdx, colIdx)"
                                     class="relative box-border flex aspect-square items-center justify-center select-none"
                                     role="gridcell"
                                 >
@@ -451,6 +456,46 @@ new #[Title('Crossword Editor')] class extends Component {
                                     ></span>
                                 </div>
                             </template>
+                        </template>
+                    </div>
+                </div>
+
+                {{-- Context menu --}}
+                <div
+                    x-show="contextMenu.show"
+                    x-on:click.stop
+                    :style="'position: fixed; left: ' + contextMenu.x + 'px; top: ' + contextMenu.y + 'px; z-index: 50;'"
+                    class="min-w-44 rounded-lg border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-800"
+                    x-transition
+                    x-cloak
+                >
+                    <button
+                        x-on:click="contextToggleBlock()"
+                        class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                    >
+                        <span x-text="isBlock(contextMenu.row, contextMenu.col) ? '{{ __('Make white') }}' : '{{ __('Make black') }}'"></span>
+                    </button>
+
+                    <button
+                        x-show="!isBlock(contextMenu.row, contextMenu.col)"
+                        x-on:click="contextToggleCircle()"
+                        class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                    >
+                        <span x-text="hasCircle(contextMenu.row, contextMenu.col) ? '{{ __('Remove circle') }}' : '{{ __('Add circle') }}'"></span>
+                    </button>
+
+                    <div x-show="!isBlock(contextMenu.row, contextMenu.col)">
+                        <div class="my-1 border-t border-zinc-200 dark:border-zinc-700"></div>
+                        <div class="px-3 py-1 text-xs font-medium text-zinc-400">{{ __('Bars') }}</div>
+                        <template x-for="edge in ['top', 'right', 'bottom', 'left']" :key="'bar-' + edge">
+                            <button
+                                x-on:click.stop="contextToggleBar(edge)"
+                                class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                            >
+                                <svg x-show="hasBar(contextMenu.row, contextMenu.col, edge)" xmlns="http://www.w3.org/2000/svg" class="size-4 text-zinc-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
+                                <span x-show="!hasBar(contextMenu.row, contextMenu.col, edge)" class="size-4"></span>
+                                <span x-text="edge.charAt(0).toUpperCase() + edge.slice(1)"></span>
+                            </button>
                         </template>
                     </div>
                 </div>

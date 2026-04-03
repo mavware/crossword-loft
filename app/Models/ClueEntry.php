@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ClueEntry extends Model
 {
@@ -25,5 +26,13 @@ class ClueEntry extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * @return HasMany<ClueReport, $this>
+     */
+    public function reports(): HasMany
+    {
+        return $this->hasMany(ClueReport::class);
     }
 }

@@ -44,17 +44,42 @@ export function crosswordSolver({ width, height, grid, solution, progress, style
             });
         },
 
+        // --- Word boundary helpers (bars + blocks) ---
+        hasLeftBoundary(row, col) {
+            if (col === 0) return true;
+            if (this.isBlock(row, col - 1)) return true;
+            return this.hasBar(row, col, 'left') || this.hasBar(row, col - 1, 'right');
+        },
+
+        hasRightBoundary(row, col) {
+            if (col + 1 >= this.width) return true;
+            if (this.isBlock(row, col + 1)) return true;
+            return this.hasBar(row, col, 'right') || this.hasBar(row, col + 1, 'left');
+        },
+
+        hasTopBoundary(row, col) {
+            if (row === 0) return true;
+            if (this.isBlock(row - 1, col)) return true;
+            return this.hasBar(row, col, 'top') || this.hasBar(row - 1, col, 'bottom');
+        },
+
+        hasBottomBoundary(row, col) {
+            if (row + 1 >= this.height) return true;
+            if (this.isBlock(row + 1, col)) return true;
+            return this.hasBar(row, col, 'bottom') || this.hasBar(row + 1, col, 'top');
+        },
+
         findSlot(dir, number) {
             for (let row = 0; row < this.height; row++) {
                 for (let col = 0; col < this.width; col++) {
                     if (this.grid[row][col] === number) {
                         if (dir === 'across') {
-                            let len = 0;
-                            while (col + len < this.width && !this.isBlock(row, col + len)) len++;
+                            let len = 1;
+                            while (!this.hasRightBoundary(row, col + len - 1)) len++;
                             if (len > 1) return { row, col, length: len };
                         } else {
-                            let len = 0;
-                            while (row + len < this.height && !this.isBlock(row + len, col)) len++;
+                            let len = 1;
+                            while (!this.hasBottomBoundary(row + len - 1, col)) len++;
                             if (len > 1) return { row, col, length: len };
                         }
                     }
@@ -73,11 +98,11 @@ export function crosswordSolver({ width, height, grid, solution, progress, style
             if (this.isBlock(row, col)) return -1;
             if (dir === 'across') {
                 let c = col;
-                while (c > 0 && !this.isBlock(row, c - 1)) c--;
+                while (c > 0 && !this.hasLeftBoundary(row, c)) c--;
                 return typeof this.grid[row][c] === 'number' && this.grid[row][c] > 0 ? this.grid[row][c] : -1;
             } else {
                 let r = row;
-                while (r > 0 && !this.isBlock(r - 1, col)) r--;
+                while (r > 0 && !this.hasTopBoundary(r, col)) r--;
                 return typeof this.grid[r][col] === 'number' && this.grid[r][col] > 0 ? this.grid[r][col] : -1;
             }
         },
@@ -87,12 +112,20 @@ export function crosswordSolver({ width, height, grid, solution, progress, style
             const cells = [];
             if (dir === 'across') {
                 let c = col;
-                while (c > 0 && !this.isBlock(row, c - 1)) c--;
-                while (c < this.width && !this.isBlock(row, c)) { cells.push([row, c]); c++; }
+                while (c > 0 && !this.hasLeftBoundary(row, c)) c--;
+                while (c < this.width && !this.isBlock(row, c)) {
+                    cells.push([row, c]);
+                    if (this.hasRightBoundary(row, c)) break;
+                    c++;
+                }
             } else {
                 let r = row;
-                while (r > 0 && !this.isBlock(r - 1, col)) r--;
-                while (r < this.height && !this.isBlock(r, col)) { cells.push([r, col]); r++; }
+                while (r > 0 && !this.hasTopBoundary(r, col)) r--;
+                while (r < this.height && !this.isBlock(r, col)) {
+                    cells.push([r, col]);
+                    if (this.hasBottomBoundary(r, col)) break;
+                    r++;
+                }
             }
             return cells;
         },
@@ -109,6 +142,23 @@ export function crosswordSolver({ width, height, grid, solution, progress, style
 
         hasCircle(row, col) {
             return this.styles[row + ',' + col]?.shapebg === 'circle';
+        },
+
+        hasBar(row, col, edge) {
+            return this.styles[row + ',' + col]?.bars?.includes(edge) || false;
+        },
+
+        cellBarStyles(row, col) {
+            const key = row + ',' + col;
+            const bars = this.styles[key]?.bars;
+            if (!bars || bars.length === 0) return '';
+
+            const shadows = [];
+            if (bars.includes('top'))    shadows.push('inset 0 2px 0 0 var(--bar-color)');
+            if (bars.includes('bottom')) shadows.push('inset 0 -2px 0 0 var(--bar-color)');
+            if (bars.includes('left'))   shadows.push('inset 2px 0 0 0 var(--bar-color)');
+            if (bars.includes('right'))  shadows.push('inset -2px 0 0 0 var(--bar-color)');
+            return 'box-shadow: ' + shadows.join(', ');
         },
 
         cellClasses(row, col) {
@@ -225,15 +275,11 @@ export function crosswordSolver({ width, height, grid, solution, progress, style
         },
 
         advanceCursor() {
-            let row = this.selectedRow, col = this.selectedCol;
+            const row = this.selectedRow, col = this.selectedCol;
             if (this.direction === 'across') {
-                col++;
-                while (col < this.width && this.isBlock(row, col)) col++;
-                if (col < this.width) this.selectedCol = col;
+                if (!this.hasRightBoundary(row, col)) this.selectedCol = col + 1;
             } else {
-                row++;
-                while (row < this.height && this.isBlock(row, col)) row++;
-                if (row < this.height) this.selectedRow = row;
+                if (!this.hasBottomBoundary(row, col)) this.selectedRow = row + 1;
             }
         },
 
@@ -245,13 +291,19 @@ export function crosswordSolver({ width, height, grid, solution, progress, style
                 this.isDirty = true;
             } else {
                 if (this.direction === 'across') {
-                    let c = col - 1;
-                    while (c >= 0 && this.isBlock(row, c)) c--;
-                    if (c >= 0) { this.selectedCol = c; this.progress[row][c] = ''; delete this.checked[row + ',' + c]; this.isDirty = true; }
+                    if (!this.hasLeftBoundary(row, col)) {
+                        this.selectedCol = col - 1;
+                        this.progress[row][col - 1] = '';
+                        delete this.checked[row + ',' + (col - 1)];
+                        this.isDirty = true;
+                    }
                 } else {
-                    let r = row - 1;
-                    while (r >= 0 && this.isBlock(r, col)) r--;
-                    if (r >= 0) { this.selectedRow = r; this.progress[r][col] = ''; delete this.checked[r + ',' + col]; this.isDirty = true; }
+                    if (!this.hasTopBoundary(row, col)) {
+                        this.selectedRow = row - 1;
+                        this.progress[row - 1][col] = '';
+                        delete this.checked[(row - 1) + ',' + col];
+                        this.isDirty = true;
+                    }
                 }
             }
         },

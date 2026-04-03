@@ -28,7 +28,13 @@
       "Bash(/opt/homebrew/bin/php vendor/bin/pint --dirty --format agent)",
       "Bash(/opt/homebrew/bin/npm run:*)",
       "Bash(export PATH=\"/opt/homebrew/bin:$PATH\")",
-      "Bash(herd php:*)"
+      "Bash(herd php:*)",
+      "Bash(/opt/homebrew/bin/php /Users/michael/Herd/Crossword-Loft/artisan make:model ClueReport --no-interaction)",
+      "Bash(/opt/homebrew/bin/php /Users/michael/Herd/Crossword-Loft/artisan make:policy ClueEntryPolicy --model=ClueEntry --no-interaction)",
+      "Bash(/opt/homebrew/bin/php /Users/michael/Herd/Crossword-Loft/artisan migrate --no-interaction)",
+      "Bash(/opt/homebrew/bin/php /Users/michael/Herd/Crossword-Loft/artisan make:test --pest ClueLibraryTest --no-interaction)",
+      "Bash(/opt/homebrew/bin/php /Users/michael/Herd/Crossword-Loft/artisan test --compact tests/Feature/ClueLibraryTest.php)",
+      "Bash(/opt/homebrew/bin/php /Users/michael/Herd/Crossword-Loft/artisan test --compact)"
     ]
   }
 }

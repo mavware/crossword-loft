@@ -158,3 +158,149 @@ it('numbers a diamond-shaped grid with null borders', function () {
         ->and($result['down'][1]['length'])->toBe(3)
         ->and($result['down'][2]['length'])->toBe(3);
 });
+
+it('uses bars as word boundaries for numbering', function () {
+    // 3x3 grid with no blocks, vertical bar splitting after col 1:
+    // [1] [2] | [3]
+    // [4] [ ] | [ ]
+    // [5] [ ] | [ ]
+    $grid = [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+    ];
+
+    $styles = [
+        '0,1' => ['bars' => ['right']],
+        '1,1' => ['bars' => ['right']],
+        '2,1' => ['bars' => ['right']],
+    ];
+
+    $result = $this->numberer->number($grid, 3, 3, $styles);
+
+    // Each row starts an across word of length 2 at col 0 (col 0 is always left boundary)
+    // Col 2 cells are single-cell across (len 1) so no across for them
+    // (0,0): across(2) + down(3) → #1
+    // (0,1): down(3) → #2
+    // (0,2): down(3) → #3
+    // (1,0): across(2) → #4
+    // (2,0): across(2) → #5
+    expect($result['across'])->toHaveCount(3)
+        ->and($result['across'][0])->toMatchArray(['number' => 1, 'row' => 0, 'col' => 0, 'length' => 2])
+        ->and($result['across'][1])->toMatchArray(['number' => 4, 'row' => 1, 'col' => 0, 'length' => 2])
+        ->and($result['across'][2])->toMatchArray(['number' => 5, 'row' => 2, 'col' => 0, 'length' => 2]);
+
+    expect($result['down'])->toHaveCount(3)
+        ->and($result['down'][0])->toMatchArray(['number' => 1, 'row' => 0, 'col' => 0, 'length' => 3])
+        ->and($result['down'][1])->toMatchArray(['number' => 2, 'row' => 0, 'col' => 1, 'length' => 3])
+        ->and($result['down'][2])->toMatchArray(['number' => 3, 'row' => 0, 'col' => 2, 'length' => 3]);
+});
+
+it('uses bars on either side of a boundary', function () {
+    // A left bar on cell (0,2) is equivalent to a right bar on cell (0,1)
+    $grid = [
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+    ];
+
+    $styles = [
+        '0,2' => ['bars' => ['left']],
+        '1,2' => ['bars' => ['left']],
+    ];
+
+    $result = $this->numberer->number($grid, 4, 2, $styles);
+
+    // Row 0: (0,0) across(2)+down(2)=#1, (0,1) down(2)=#2, (0,2) across(2)+down(2)=#3, (0,3) down(2)=#4
+    // Row 1: (1,0) across(2)=#5, (1,2) across(2)=#6
+    expect($result['across'])->toHaveCount(4)
+        ->and($result['across'][0])->toMatchArray(['number' => 1, 'row' => 0, 'col' => 0, 'length' => 2])
+        ->and($result['across'][1])->toMatchArray(['number' => 3, 'row' => 0, 'col' => 2, 'length' => 2])
+        ->and($result['across'][2])->toMatchArray(['number' => 5, 'row' => 1, 'col' => 0, 'length' => 2])
+        ->and($result['across'][3])->toMatchArray(['number' => 6, 'row' => 1, 'col' => 2, 'length' => 2]);
+});
+
+it('numbers a barred grid with horizontal bars', function () {
+    // 3x3 grid with horizontal bar after row 0:
+    // [1] [2] [3]
+    // ———————————
+    // [4] [ ] [ ]
+    // [ ] [ ] [ ]
+    $grid = [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+    ];
+
+    $styles = [
+        '0,0' => ['bars' => ['bottom']],
+        '0,1' => ['bars' => ['bottom']],
+        '0,2' => ['bars' => ['bottom']],
+    ];
+
+    $result = $this->numberer->number($grid, 3, 3, $styles);
+
+    // Row 0: (0,0) starts across (3), down blocked by bar (single cell) → #1
+    //   (0,1): down single cell, no. (0,2): same.
+    // Row 1: (1,0) starts across (3) and down (2) → #2
+    //   (1,1): starts down (2) → #3
+    //   (1,2): starts down (2) → #4
+    // Row 2: (2,0) starts across (3, left boundary at col 0) → #5
+    expect($result['across'])->toHaveCount(3)
+        ->and($result['across'][0])->toMatchArray(['number' => 1, 'row' => 0, 'col' => 0, 'length' => 3])
+        ->and($result['across'][1])->toMatchArray(['number' => 2, 'row' => 1, 'col' => 0, 'length' => 3])
+        ->and($result['across'][2])->toMatchArray(['number' => 5, 'row' => 2, 'col' => 0, 'length' => 3]);
+
+    expect($result['down'])->toHaveCount(3)
+        ->and($result['down'][0])->toMatchArray(['number' => 2, 'row' => 1, 'col' => 0, 'length' => 2])
+        ->and($result['down'][1])->toMatchArray(['number' => 3, 'row' => 1, 'col' => 1, 'length' => 2])
+        ->and($result['down'][2])->toMatchArray(['number' => 4, 'row' => 1, 'col' => 2, 'length' => 2]);
+});
+
+it('handles both bars and blocks in the same grid', function () {
+    // Hybrid: block at (0,2), bar on right of (1,0)
+    // [1] [2] [#]
+    // [3] | [4] [5]
+    // [ ]   [ ] [ ]
+    $grid = [
+        [0, 0, '#'],
+        [0, 0, 0],
+        [0, 0, 0],
+    ];
+
+    $styles = [
+        '1,0' => ['bars' => ['right']],
+        '2,0' => ['bars' => ['right']],
+    ];
+
+    $result = $this->numberer->number($grid, 3, 3, $styles);
+
+    // (0,0): starts across (len 2) + down (len 3) → #1
+    // (0,1): starts down (len 3) → #2
+    // (1,0): left boundary (col 0), right boundary (bar) → len 1, no across
+    // (1,1): left boundary (bar on (1,0) right), starts across (len 2) → #3
+    // (1,2): top boundary (block above), starts down (len 2) → #4
+    // (2,0): left boundary (col 0), right boundary (bar) → len 1, no across
+    // (2,1): left boundary (bar on (2,0) right), starts across (len 2) → #5
+    expect($result['across'])->toHaveCount(3)
+        ->and($result['across'][0])->toMatchArray(['number' => 1, 'row' => 0, 'col' => 0, 'length' => 2])
+        ->and($result['across'][1])->toMatchArray(['number' => 3, 'row' => 1, 'col' => 1, 'length' => 2])
+        ->and($result['across'][2])->toMatchArray(['number' => 5, 'row' => 2, 'col' => 1, 'length' => 2]);
+
+    expect($result['down'])->toHaveCount(3)
+        ->and($result['down'][0])->toMatchArray(['number' => 1, 'row' => 0, 'col' => 0, 'length' => 3])
+        ->and($result['down'][1])->toMatchArray(['number' => 2, 'row' => 0, 'col' => 1, 'length' => 3])
+        ->and($result['down'][2])->toMatchArray(['number' => 4, 'row' => 1, 'col' => 2, 'length' => 2]);
+});
+
+it('preserves existing behavior when no styles are passed', function () {
+    $grid = [
+        [0, 0, '#'],
+        [0, 0, 0],
+        ['#', 0, 0],
+    ];
+
+    $withStyles = $this->numberer->number($grid, 3, 3, []);
+    $withoutStyles = $this->numberer->number($grid, 3, 3);
+
+    expect($withStyles)->toBe($withoutStyles);
+});

@@ -42,7 +42,7 @@ class JpzImporter
         $wordMap = $this->parseWords($crossword);
         [$cluesAcross, $cluesDown] = $this->parseClues($crossword, $wordMap);
 
-        $result = $this->numberer->number($grid, $width, $height);
+        $result = $this->numberer->number($grid, $width, $height, $styles ?? []);
         $finalAcross = $this->matchCluesToSlots($cluesAcross, $result['across']);
         $finalDown = $this->matchCluesToSlots($cluesDown, $result['down']);
 

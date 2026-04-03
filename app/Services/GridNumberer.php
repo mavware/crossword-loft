@@ -7,14 +7,18 @@ class GridNumberer
     /**
      * Number the grid cells and compute clue slots.
      *
+     * Bars (stored in styles as e.g. {"0,2": {"bars": ["right","bottom"]}}) act
+     * as word boundaries alongside black squares and void cells.
+     *
      * @param  array<int, array<int, mixed>>  $grid
+     * @param  array<string, array{bars?: list<string>, shapebg?: string}>  $styles
      * @return array{
      *     grid: array<int, array<int, mixed>>,
      *     across: array<int, array{number: int, row: int, col: int, length: int}>,
      *     down: array<int, array{number: int, row: int, col: int, length: int}>
      * }
      */
-    public function number(array $grid, int $width, int $height): array
+    public function number(array $grid, int $width, int $height, array $styles = []): array
     {
         $numbered = $grid;
         $across = [];
@@ -35,8 +39,8 @@ class GridNumberer
                     continue;
                 }
 
-                $startsAcross = $this->startsAcross($grid, $row, $col, $width);
-                $startsDown = $this->startsDown($grid, $row, $col, $height);
+                $startsAcross = $this->startsAcross($grid, $row, $col, $width, $styles);
+                $startsDown = $this->startsDown($grid, $row, $col, $height, $styles);
 
                 if ($startsAcross || $startsDown) {
                     $clueNumber++;
@@ -47,7 +51,7 @@ class GridNumberer
                             'number' => $clueNumber,
                             'row' => $row,
                             'col' => $col,
-                            'length' => $this->wordLength($grid, $row, $col, $width, 'across'),
+                            'length' => $this->wordLength($grid, $row, $col, $width, 'across', $styles),
                         ];
                     }
 
@@ -56,7 +60,7 @@ class GridNumberer
                             'number' => $clueNumber,
                             'row' => $row,
                             'col' => $col,
-                            'length' => $this->wordLength($grid, $row, $col, $height, 'down'),
+                            'length' => $this->wordLength($grid, $row, $col, $height, 'down', $styles),
                         ];
                     }
                 } else {
@@ -83,32 +87,131 @@ class GridNumberer
         return $cell === '#' || $cell === null;
     }
 
-    private function startsAcross(array $grid, int $row, int $col, int $width): bool
+    /**
+     * Check if a cell has a bar on a given edge.
+     *
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function hasBar(array $styles, int $row, int $col, string $edge): bool
     {
-        $leftIsBlock = $col === 0 || $this->isBlock($grid, $row, $col - 1);
-        $hasRightNeighbor = $col + 1 < $width && ! $this->isBlock($grid, $row, $col + 1);
+        $key = $row.','.$col;
 
-        return $leftIsBlock && $hasRightNeighbor;
+        return in_array($edge, $styles[$key]['bars'] ?? [], true);
     }
 
-    private function startsDown(array $grid, int $row, int $col, int $height): bool
+    /**
+     * Check if there is a word boundary on the left side of this cell.
+     * True if: left edge of grid, black square to the left, bar on left edge of this cell,
+     * or bar on the right edge of the cell to the left.
+     *
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function hasLeftBoundary(array $grid, int $row, int $col, array $styles): bool
     {
-        $topIsBlock = $row === 0 || $this->isBlock($grid, $row - 1, $col);
-        $hasBottomNeighbor = $row + 1 < $height && ! $this->isBlock($grid, $row + 1, $col);
+        if ($col === 0) {
+            return true;
+        }
 
-        return $topIsBlock && $hasBottomNeighbor;
+        if ($this->isBlock($grid, $row, $col - 1)) {
+            return true;
+        }
+
+        return $this->hasBar($styles, $row, $col, 'left')
+            || $this->hasBar($styles, $row, $col - 1, 'right');
     }
 
-    private function wordLength(array $grid, int $row, int $col, int $max, string $direction): int
+    /**
+     * Check if there is a word boundary on the top side of this cell.
+     *
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function hasTopBoundary(array $grid, int $row, int $col, array $styles): bool
     {
-        $length = 0;
+        if ($row === 0) {
+            return true;
+        }
+
+        if ($this->isBlock($grid, $row - 1, $col)) {
+            return true;
+        }
+
+        return $this->hasBar($styles, $row, $col, 'top')
+            || $this->hasBar($styles, $row - 1, $col, 'bottom');
+    }
+
+    /**
+     * Check if there is a word boundary on the right side of this cell.
+     *
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function hasRightBoundary(array $grid, int $row, int $col, int $width, array $styles): bool
+    {
+        if ($col + 1 >= $width) {
+            return true;
+        }
+
+        if ($this->isBlock($grid, $row, $col + 1)) {
+            return true;
+        }
+
+        return $this->hasBar($styles, $row, $col, 'right')
+            || $this->hasBar($styles, $row, $col + 1, 'left');
+    }
+
+    /**
+     * Check if there is a word boundary on the bottom side of this cell.
+     *
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function hasBottomBoundary(array $grid, int $row, int $col, int $height, array $styles): bool
+    {
+        if ($row + 1 >= $height) {
+            return true;
+        }
+
+        if ($this->isBlock($grid, $row + 1, $col)) {
+            return true;
+        }
+
+        return $this->hasBar($styles, $row, $col, 'bottom')
+            || $this->hasBar($styles, $row + 1, $col, 'top');
+    }
+
+    /**
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function startsAcross(array $grid, int $row, int $col, int $width, array $styles): bool
+    {
+        $leftBoundary = $this->hasLeftBoundary($grid, $row, $col, $styles);
+        $rightOpen = ! $this->hasRightBoundary($grid, $row, $col, $width, $styles);
+
+        return $leftBoundary && $rightOpen;
+    }
+
+    /**
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function startsDown(array $grid, int $row, int $col, int $height, array $styles): bool
+    {
+        $topBoundary = $this->hasTopBoundary($grid, $row, $col, $styles);
+        $bottomOpen = ! $this->hasBottomBoundary($grid, $row, $col, $height, $styles);
+
+        return $topBoundary && $bottomOpen;
+    }
+
+    /**
+     * @param  array<string, array{bars?: list<string>}>  $styles
+     */
+    private function wordLength(array $grid, int $row, int $col, int $max, string $direction, array $styles): int
+    {
+        $length = 1;
 
         if ($direction === 'across') {
-            while ($col + $length < $max && ! $this->isBlock($grid, $row, $col + $length)) {
+            while (! $this->hasRightBoundary($grid, $row, $col + $length - 1, $max, $styles)) {
                 $length++;
             }
         } else {
-            while ($row + $length < $max && ! $this->isBlock($grid, $row + $length, $col)) {
+            while (! $this->hasBottomBoundary($grid, $row + $length - 1, $col, $max, $styles)) {
                 $length++;
             }
         }

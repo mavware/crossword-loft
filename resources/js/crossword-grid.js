@@ -19,11 +19,14 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
         clueSuggestions: [],
         clueSuggestionsLoading: false,
         clueSuggestionsWord: '',
+        contextMenu: { show: false, row: -1, col: -1, x: 0, y: 0 },
         _saveTimer: null,
         _savedTimer: null,
         _suggestTimer: null,
+        _longPressTimer: null,
 
         init() {
+            document.addEventListener('click', () => this.closeContextMenu());
             this.$watch('isDirty', (val) => {
                 if (val) this.debouncedSave();
             });
@@ -44,6 +47,31 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
             });
         },
 
+        // --- Word boundary helpers (bars + blocks) ---
+        hasLeftBoundary(row, col) {
+            if (col === 0) return true;
+            if (this.isBlock(row, col - 1)) return true;
+            return this.hasBar(row, col, 'left') || this.hasBar(row, col - 1, 'right');
+        },
+
+        hasRightBoundary(row, col) {
+            if (col + 1 >= this.width) return true;
+            if (this.isBlock(row, col + 1)) return true;
+            return this.hasBar(row, col, 'right') || this.hasBar(row, col + 1, 'left');
+        },
+
+        hasTopBoundary(row, col) {
+            if (row === 0) return true;
+            if (this.isBlock(row - 1, col)) return true;
+            return this.hasBar(row, col, 'top') || this.hasBar(row - 1, col, 'bottom');
+        },
+
+        hasBottomBoundary(row, col) {
+            if (row + 1 >= this.height) return true;
+            if (this.isBlock(row + 1, col)) return true;
+            return this.hasBar(row, col, 'bottom') || this.hasBar(row + 1, col, 'top');
+        },
+
         // --- Grid numbering (mirrors PHP GridNumberer) ---
         numberGrid() {
             const numbered = this.grid.map(row => row.map(cell => cell === '#' ? '#' : (cell === null ? null : 0)));
@@ -55,23 +83,21 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
                 for (let col = 0; col < this.width; col++) {
                     if (this.isBlock(row, col)) continue;
 
-                    const startsAcross = (col === 0 || this.isBlock(row, col - 1)) &&
-                        (col + 1 < this.width && !this.isBlock(row, col + 1));
-                    const startsDown = (row === 0 || this.isBlock(row - 1, col)) &&
-                        (row + 1 < this.height && !this.isBlock(row + 1, col));
+                    const startsAcross = this.hasLeftBoundary(row, col) && !this.hasRightBoundary(row, col);
+                    const startsDown = this.hasTopBoundary(row, col) && !this.hasBottomBoundary(row, col);
 
                     if (startsAcross || startsDown) {
                         clueNum++;
                         numbered[row][col] = clueNum;
 
                         if (startsAcross) {
-                            let len = 0;
-                            while (col + len < this.width && !this.isBlock(row, col + len)) len++;
+                            let len = 1;
+                            while (!this.hasRightBoundary(row, col + len - 1)) len++;
                             acrossSlots.push({ number: clueNum, row, col, length: len });
                         }
                         if (startsDown) {
-                            let len = 0;
-                            while (row + len < this.height && !this.isBlock(row + len, col)) len++;
+                            let len = 1;
+                            while (!this.hasBottomBoundary(row + len - 1, col)) len++;
                             downSlots.push({ number: clueNum, row, col, length: len });
                         }
                     }
@@ -118,12 +144,12 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
                 for (let col = 0; col < this.width; col++) {
                     if (this.grid[row][col] === number) {
                         if (dir === 'across') {
-                            let len = 0;
-                            while (col + len < this.width && !this.isBlock(row, col + len)) len++;
+                            let len = 1;
+                            while (!this.hasRightBoundary(row, col + len - 1)) len++;
                             if (len > 1) return { row, col, length: len };
                         } else {
-                            let len = 0;
-                            while (row + len < this.height && !this.isBlock(row + len, col)) len++;
+                            let len = 1;
+                            while (!this.hasBottomBoundary(row + len - 1, col)) len++;
                             if (len > 1) return { row, col, length: len };
                         }
                     }
@@ -143,11 +169,11 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
 
             if (dir === 'across') {
                 let c = col;
-                while (c > 0 && !this.isBlock(row, c - 1)) c--;
+                while (c > 0 && !this.hasLeftBoundary(row, c)) c--;
                 return typeof this.grid[row][c] === 'number' && this.grid[row][c] > 0 ? this.grid[row][c] : -1;
             } else {
                 let r = row;
-                while (r > 0 && !this.isBlock(r - 1, col)) r--;
+                while (r > 0 && !this.hasTopBoundary(r, col)) r--;
                 return typeof this.grid[r][col] === 'number' && this.grid[r][col] > 0 ? this.grid[r][col] : -1;
             }
         },
@@ -158,16 +184,18 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
 
             if (dir === 'across') {
                 let c = col;
-                while (c > 0 && !this.isBlock(row, c - 1)) c--;
+                while (c > 0 && !this.hasLeftBoundary(row, c)) c--;
                 while (c < this.width && !this.isBlock(row, c)) {
                     cells.push([row, c]);
+                    if (this.hasRightBoundary(row, c)) break;
                     c++;
                 }
             } else {
                 let r = row;
-                while (r > 0 && !this.isBlock(r - 1, col)) r--;
+                while (r > 0 && !this.hasTopBoundary(r, col)) r--;
                 while (r < this.height && !this.isBlock(r, col)) {
                     cells.push([r, col]);
+                    if (this.hasBottomBoundary(r, col)) break;
                     r++;
                 }
             }
@@ -274,6 +302,10 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
             const key = e.key;
 
             if (key === 'Escape') {
+                if (this.contextMenu.show) {
+                    this.closeContextMenu();
+                    return;
+                }
                 this.selectedRow = -1;
                 this.selectedCol = -1;
                 return;
@@ -365,20 +397,16 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
         },
 
         advanceCursor() {
-            let row = this.selectedRow;
-            let col = this.selectedCol;
+            const row = this.selectedRow;
+            const col = this.selectedCol;
 
             if (this.direction === 'across') {
-                col++;
-                while (col < this.width && this.isBlock(row, col)) col++;
-                if (col < this.width) {
-                    this.selectedCol = col;
+                if (!this.hasRightBoundary(row, col)) {
+                    this.selectedCol = col + 1;
                 }
             } else {
-                row++;
-                while (row < this.height && this.isBlock(row, col)) row++;
-                if (row < this.height) {
-                    this.selectedRow = row;
+                if (!this.hasBottomBoundary(row, col)) {
+                    this.selectedRow = row + 1;
                 }
             }
         },
@@ -391,21 +419,17 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
                 this.solution[row][col] = '';
                 this.markDirty();
             } else {
-                // Move backward
+                // Move backward within the current word
                 if (this.direction === 'across') {
-                    let c = col - 1;
-                    while (c >= 0 && this.isBlock(row, c)) c--;
-                    if (c >= 0) {
-                        this.selectedCol = c;
-                        this.solution[row][c] = '';
+                    if (!this.hasLeftBoundary(row, col)) {
+                        this.selectedCol = col - 1;
+                        this.solution[row][col - 1] = '';
                         this.markDirty();
                     }
                 } else {
-                    let r = row - 1;
-                    while (r >= 0 && this.isBlock(r, col)) r--;
-                    if (r >= 0) {
-                        this.selectedRow = r;
-                        this.solution[r][col] = '';
+                    if (!this.hasTopBoundary(row, col)) {
+                        this.selectedRow = row - 1;
+                        this.solution[row - 1][col] = '';
                         this.markDirty();
                     }
                 }
@@ -469,11 +493,119 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
 
             const key = this.selectedRow + ',' + this.selectedCol;
             if (this.styles[key]?.shapebg === 'circle') {
-                delete this.styles[key];
+                const entry = { ...this.styles[key] };
+                delete entry.shapebg;
+                if (Object.keys(entry).length === 0 || (Object.keys(entry).length === 1 && entry.bars?.length === 0)) {
+                    delete this.styles[key];
+                } else {
+                    this.styles[key] = entry;
+                }
             } else {
-                this.styles[key] = { shapebg: 'circle' };
+                this.styles[key] = { ...this.styles[key], shapebg: 'circle' };
             }
             this.markDirty();
+        },
+
+        // --- Context menu ---
+        openContextMenu(row, col, event) {
+            if (this.isVoid(row, col)) return;
+            const menuWidth = 200;
+            const menuHeight = 280;
+            this.contextMenu.x = Math.min(event.clientX, window.innerWidth - menuWidth);
+            this.contextMenu.y = Math.min(event.clientY, window.innerHeight - menuHeight);
+            this.contextMenu.row = row;
+            this.contextMenu.col = col;
+            this.contextMenu.show = true;
+        },
+
+        closeContextMenu() {
+            this.contextMenu.show = false;
+        },
+
+        contextToggleBlock() {
+            this.toggleBlock(this.contextMenu.row, this.contextMenu.col);
+            this.closeContextMenu();
+        },
+
+        contextToggleCircle() {
+            const row = this.contextMenu.row;
+            const col = this.contextMenu.col;
+            if (this.isBlock(row, col)) return;
+
+            const key = row + ',' + col;
+            if (this.styles[key]?.shapebg === 'circle') {
+                const entry = { ...this.styles[key] };
+                delete entry.shapebg;
+                if (Object.keys(entry).length === 0 || (Object.keys(entry).length === 1 && entry.bars?.length === 0)) {
+                    delete this.styles[key];
+                } else {
+                    this.styles[key] = entry;
+                }
+            } else {
+                this.styles[key] = { ...this.styles[key], shapebg: 'circle' };
+            }
+            this.markDirty();
+            this.closeContextMenu();
+        },
+
+        // --- Bars ---
+        toggleBar(row, col, edge) {
+            const key = row + ',' + col;
+            const entry = this.styles[key] ? { ...this.styles[key] } : {};
+            const bars = entry.bars ? [...entry.bars] : [];
+
+            const idx = bars.indexOf(edge);
+            if (idx >= 0) {
+                bars.splice(idx, 1);
+            } else {
+                bars.push(edge);
+            }
+
+            if (bars.length > 0) {
+                entry.bars = bars;
+            } else {
+                delete entry.bars;
+            }
+
+            if (Object.keys(entry).length === 0) {
+                delete this.styles[key];
+            } else {
+                this.styles[key] = entry;
+            }
+            this.markDirty();
+        },
+
+        contextToggleBar(edge) {
+            this.toggleBar(this.contextMenu.row, this.contextMenu.col, edge);
+        },
+
+        hasBar(row, col, edge) {
+            return this.styles[row + ',' + col]?.bars?.includes(edge) || false;
+        },
+
+        cellBarStyles(row, col) {
+            const key = row + ',' + col;
+            const bars = this.styles[key]?.bars;
+            if (!bars || bars.length === 0) return '';
+
+            const shadows = [];
+            if (bars.includes('top'))    shadows.push('inset 0 2px 0 0 var(--bar-color)');
+            if (bars.includes('bottom')) shadows.push('inset 0 -2px 0 0 var(--bar-color)');
+            if (bars.includes('left'))   shadows.push('inset 2px 0 0 0 var(--bar-color)');
+            if (bars.includes('right'))  shadows.push('inset -2px 0 0 0 var(--bar-color)');
+            return 'box-shadow: ' + shadows.join(', ');
+        },
+
+        // --- Long press (mobile) ---
+        startLongPress(row, col, event) {
+            const touch = event.touches[0];
+            this._longPressTimer = setTimeout(() => {
+                this.openContextMenu(row, col, { clientX: touch.clientX, clientY: touch.clientY });
+            }, 500);
+        },
+
+        cancelLongPress() {
+            clearTimeout(this._longPressTimer);
         },
 
         // --- Clear ---

@@ -21,6 +21,15 @@
                     <flux:sidebar.item icon="play" :href="route('crosswords.solving')" :current="request()->routeIs('crosswords.solving') || request()->routeIs('crosswords.solver')" wire:navigate>
                         {{ __('Solving') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="heart" :href="route('favorites.index')" :current="request()->routeIs('favorites.index')" wire:navigate>
+                        {{ __('Favorites') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="book-open" :href="route('clues.index')" :current="request()->routeIs('clues.index')" wire:navigate>
+                        {{ __('Clue Library') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="map" :href="route('roadmap.index')" :current="request()->routeIs('roadmap.index')" wire:navigate>
+                        {{ __('Roadmap') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

@@ -113,7 +113,7 @@ class PuzExporter
      */
     private function orderCluesForPuz(Crossword $crossword): array
     {
-        $result = $this->numberer->number($crossword->grid, $crossword->width, $crossword->height);
+        $result = $this->numberer->number($crossword->grid, $crossword->width, $crossword->height, $crossword->styles ?? []);
 
         $acrossMap = collect($crossword->clues_across)->keyBy('number');
         $downMap = collect($crossword->clues_down)->keyBy('number');

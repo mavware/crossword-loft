@@ -1,8 +1,10 @@
 <?php
 
 use App\Models\Crossword;
+use App\Models\CrosswordLike;
 use App\Models\PuzzleAttempt;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -27,6 +29,20 @@ new #[Title('Solve Crossword')] class extends Component {
     public array $cluesAcross = [];
     public array $cluesDown = [];
     public ?array $styles = null;
+
+    #[Computed]
+    public function isLiked(): bool
+    {
+        return CrosswordLike::where('user_id', Auth::id())
+            ->where('crossword_id', $this->crosswordId)
+            ->exists();
+    }
+
+    #[Computed]
+    public function likesCount(): int
+    {
+        return CrosswordLike::where('crossword_id', $this->crosswordId)->count();
+    }
 
     public function mount(Crossword $crossword): void
     {
@@ -53,6 +69,24 @@ new #[Title('Solve Crossword')] class extends Component {
         $this->cluesAcross = $crossword->clues_across ?? [];
         $this->cluesDown = $crossword->clues_down ?? [];
         $this->styles = $crossword->styles;
+    }
+
+    public function toggleLike(): void
+    {
+        $like = CrosswordLike::where('user_id', Auth::id())
+            ->where('crossword_id', $this->crosswordId)
+            ->first();
+
+        if ($like) {
+            $like->delete();
+        } else {
+            CrosswordLike::create([
+                'user_id' => Auth::id(),
+                'crossword_id' => $this->crosswordId,
+            ]);
+        }
+
+        unset($this->isLiked, $this->likesCount);
     }
 
     public function saveProgress(array $progress, bool $isCompleted = false): void
@@ -95,6 +129,15 @@ new #[Title('Solve Crossword')] class extends Component {
             @if(!$isOwner && $authorName)
                 <flux:text size="sm" class="text-zinc-400">{{ __('by :author', ['author' => $authorName]) }}</flux:text>
             @endif
+            <button
+                wire:click="toggleLike"
+                class="flex items-center gap-1 rounded-lg px-2 py-1 text-sm transition-colors {{ $this->isLiked ? 'text-red-500' : 'text-zinc-400 hover:text-red-400' }}"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="{{ $this->isLiked ? 'currentColor' : 'none' }}" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+                </svg>
+                <span>{{ $this->likesCount }}</span>
+            </button>
         </div>
 
         <div class="flex items-center gap-1">
@@ -199,7 +242,7 @@ new #[Title('Solve Crossword')] class extends Component {
                 :aria-label="'Crossword grid, ' + width + ' columns by ' + height + ' rows'"
             >
                 <div
-                    class="grid border border-zinc-800 dark:border-zinc-300"
+                    class="grid border border-zinc-800 dark:border-zinc-300 [--bar-color:var(--color-zinc-800)] dark:[--bar-color:var(--color-zinc-300)]"
                     :style="'grid-template-columns: repeat(' + width + ', 1fr);'"
                 >
                     <template x-for="(row, rowIdx) in grid" :key="'row-' + rowIdx">
@@ -207,6 +250,7 @@ new #[Title('Solve Crossword')] class extends Component {
                             <div
                                 x-on:click="selectCell(rowIdx, colIdx)"
                                 :class="[cellClasses(rowIdx, colIdx), isVoid(rowIdx, colIdx) ? '' : 'border border-zinc-300 dark:border-zinc-600']"
+                                :style="cellBarStyles(rowIdx, colIdx)"
                                 class="relative box-border flex aspect-square items-center justify-center select-none"
                                 role="gridcell"
                             >

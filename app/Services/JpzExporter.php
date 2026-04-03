@@ -72,7 +72,7 @@ class JpzExporter
 
         $this->buildGrid($dom, $crosswordEl, $crossword);
 
-        $result = $this->numberer->number($crossword->grid, $crossword->width, $crossword->height);
+        $result = $this->numberer->number($crossword->grid, $crossword->width, $crossword->height, $crossword->styles ?? []);
 
         $this->buildWords($dom, $crosswordEl, $result, $crossword);
         $this->buildClues($dom, $crosswordEl, $result, $crossword);

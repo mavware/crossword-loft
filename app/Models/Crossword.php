@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
@@ -61,6 +62,22 @@ class Crossword extends Model
     public function clueEntries(): HasMany
     {
         return $this->hasMany(ClueEntry::class);
+    }
+
+    /**
+     * @return HasMany<CrosswordLike, $this>
+     */
+    public function likes(): HasMany
+    {
+        return $this->hasMany(CrosswordLike::class);
+    }
+
+    /**
+     * @return BelongsToMany<User, $this>
+     */
+    public function likedByUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'crossword_likes')->withTimestamps();
     }
 
     /**

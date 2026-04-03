@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -50,6 +51,38 @@ class User extends Authenticatable
     public function puzzleAttempts(): HasMany
     {
         return $this->hasMany(PuzzleAttempt::class);
+    }
+
+    /**
+     * @return HasMany<ClueEntry, $this>
+     */
+    public function clueEntries(): HasMany
+    {
+        return $this->hasMany(ClueEntry::class);
+    }
+
+    /**
+     * @return HasMany<CrosswordLike, $this>
+     */
+    public function crosswordLikes(): HasMany
+    {
+        return $this->hasMany(CrosswordLike::class);
+    }
+
+    /**
+     * @return BelongsToMany<Crossword, $this>
+     */
+    public function likedCrosswords(): BelongsToMany
+    {
+        return $this->belongsToMany(Crossword::class, 'crossword_likes')->withTimestamps();
+    }
+
+    /**
+     * @return HasMany<FavoriteList, $this>
+     */
+    public function favoriteLists(): HasMany
+    {
+        return $this->hasMany(FavoriteList::class);
     }
 
     public function initials(): string

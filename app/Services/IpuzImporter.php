@@ -35,7 +35,7 @@ class IpuzImporter
         $solution = $this->parseSolution($data['solution'] ?? null, $grid, $width, $height);
         [$cluesAcross, $cluesDown] = $this->parseClues($data['clues'] ?? []);
 
-        $result = $this->renumber($grid, $width, $height, $cluesAcross, $cluesDown);
+        $result = $this->renumber($grid, $width, $height, $cluesAcross, $cluesDown, $styles ?? []);
 
         $metadata = $this->extractMetadata($data);
 
@@ -245,9 +245,9 @@ class IpuzImporter
      *
      * @return array{grid: array, cluesAcross: array, cluesDown: array}
      */
-    private function renumber(array $grid, int $width, int $height, array $cluesAcross, array $cluesDown): array
+    private function renumber(array $grid, int $width, int $height, array $cluesAcross, array $cluesDown, array $styles = []): array
     {
-        $result = $this->numberer->number($grid, $width, $height);
+        $result = $this->numberer->number($grid, $width, $height, $styles);
 
         $finalAcross = $this->matchCluesToSlots($cluesAcross, $result['across'], $result['grid']);
         $finalDown = $this->matchCluesToSlots($cluesDown, $result['down'], $result['grid']);
