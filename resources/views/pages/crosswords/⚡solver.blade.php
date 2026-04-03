@@ -206,7 +206,7 @@ new #[Title('Solve Crossword')] class extends Component {
     </div>
 
     {{-- Main solver layout --}}
-    <div class="flex flex-1 gap-4 overflow-hidden max-lg:flex-col">
+    <div class="flex flex-1 gap-4 overflow-hidden max-lg:flex-col lg:max-h-[calc(100dvh-8rem)]">
         {{-- Across clues panel (desktop) --}}
         <div class="hidden w-64 flex-col overflow-hidden lg:flex">
             <flux:heading size="sm" class="mb-2 shrink-0">{{ __('Across') }}</flux:heading>
@@ -214,9 +214,13 @@ new #[Title('Solve Crossword')] class extends Component {
                 <template x-for="clue in computedCluesAcross" :key="'across-' + clue.number">
                     <div
                         x-on:click="selectClue('across', clue.number)"
+                        x-on:focus="selectClue('across', clue.number)"
+                        x-on:keydown.tab.prevent="focusNextClue($el, 'across', false)"
+                        x-on:keydown.shift.tab.prevent="focusNextClue($el, 'across', true)"
                         :class="activeClueNumber === clue.number && direction === 'across' ? 'bg-blue-100 dark:bg-blue-900/40' : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/50'"
                         class="cursor-pointer rounded px-2 py-1"
                         :id="'clue-across-' + clue.number"
+                        tabindex="0"
                     >
                         <div class="flex items-start gap-1.5">
                             <span class="mt-px text-xs font-bold text-zinc-500" x-text="clue.number"></span>
@@ -301,9 +305,13 @@ new #[Title('Solve Crossword')] class extends Component {
                 <template x-for="clue in computedCluesDown" :key="'down-' + clue.number">
                     <div
                         x-on:click="selectClue('down', clue.number)"
+                        x-on:focus="selectClue('down', clue.number)"
+                        x-on:keydown.tab.prevent="focusNextClue($el, 'down', false)"
+                        x-on:keydown.shift.tab.prevent="focusNextClue($el, 'down', true)"
                         :class="activeClueNumber === clue.number && direction === 'down' ? 'bg-blue-100 dark:bg-blue-900/40' : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/50'"
                         class="cursor-pointer rounded px-2 py-1"
                         :id="'clue-down-' + clue.number"
+                        tabindex="0"
                     >
                         <div class="flex items-start gap-1.5">
                             <span class="mt-px text-xs font-bold text-zinc-500" x-text="clue.number"></span>
@@ -337,8 +345,12 @@ new #[Title('Solve Crossword')] class extends Component {
                         <template x-for="clue in computedCluesAcross" :key="'m-across-' + clue.number">
                             <div
                                 x-on:click="selectClue('across', clue.number)"
+                                x-on:focus="selectClue('across', clue.number)"
+                                x-on:keydown.tab.prevent="focusNextClue($el, 'across', false)"
+                                x-on:keydown.shift.tab.prevent="focusNextClue($el, 'across', true)"
                                 :class="activeClueNumber === clue.number && direction === 'across' ? 'bg-blue-100 dark:bg-blue-900/40' : ''"
                                 class="cursor-pointer rounded px-2 py-1"
+                                tabindex="0"
                             >
                                 <div class="flex items-start gap-1.5">
                                     <span class="mt-px text-xs font-bold text-zinc-500" x-text="clue.number"></span>
@@ -356,8 +368,12 @@ new #[Title('Solve Crossword')] class extends Component {
                         <template x-for="clue in computedCluesDown" :key="'m-down-' + clue.number">
                             <div
                                 x-on:click="selectClue('down', clue.number)"
+                                x-on:focus="selectClue('down', clue.number)"
+                                x-on:keydown.tab.prevent="focusNextClue($el, 'down', false)"
+                                x-on:keydown.shift.tab.prevent="focusNextClue($el, 'down', true)"
                                 :class="activeClueNumber === clue.number && direction === 'down' ? 'bg-blue-100 dark:bg-blue-900/40' : ''"
                                 class="cursor-pointer rounded px-2 py-1"
+                                tabindex="0"
                             >
                                 <div class="flex items-start gap-1.5">
                                     <span class="mt-px text-xs font-bold text-zinc-500" x-text="clue.number"></span>

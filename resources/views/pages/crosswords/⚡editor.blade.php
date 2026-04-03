@@ -26,9 +26,13 @@ new #[Title('Crossword Editor')] class extends Component {
     public array $cluesDown = [];
     public ?array $styles = null;
 
+    public string $copyright = '';
+    public string $notes = '';
+    public int $minAnswerLength = 3;
+
     public bool $isPublished = false;
 
-    public bool $showResizeModal = false;
+    public bool $showSettingsModal = false;
     public int $resizeWidth;
     public int $resizeHeight;
 
@@ -38,7 +42,7 @@ new #[Title('Crossword Editor')] class extends Component {
 
         $this->crosswordId = $crossword->id;
         $this->title = $crossword->title ?? '';
-        $this->author = $crossword->author ?? '';
+        $this->author = $crossword->author ?? Auth::user()->name ?? '';
         $this->width = $crossword->width;
         $this->height = $crossword->height;
         $this->grid = $crossword->grid;
@@ -46,6 +50,9 @@ new #[Title('Crossword Editor')] class extends Component {
         $this->cluesAcross = $crossword->clues_across ?? [];
         $this->cluesDown = $crossword->clues_down ?? [];
         $this->styles = $crossword->styles;
+        $this->copyright = $crossword->copyright ?? '';
+        $this->notes = $crossword->notes ?? '';
+        $this->minAnswerLength = $crossword->metadata['min_answer_length'] ?? 3;
         $this->isPublished = $crossword->is_published;
         $this->resizeWidth = $crossword->width;
         $this->resizeHeight = $crossword->height;
@@ -79,14 +86,30 @@ new #[Title('Crossword Editor')] class extends Component {
 
     public function saveMetadata(): void
     {
+        $this->validate([
+            'title' => ['nullable', 'string', 'max:255'],
+            'author' => ['nullable', 'string', 'max:255'],
+            'copyright' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'minAnswerLength' => ['required', 'integer', 'min:1', 'max:15'],
+        ]);
+
         $crossword = Crossword::findOrFail($this->crosswordId);
         $this->authorize('update', $crossword);
+
+        $metadata = $crossword->metadata ?? [];
+        $metadata['min_answer_length'] = $this->minAnswerLength;
 
         $crossword->update([
             'title' => $this->title,
             'author' => $this->author,
+            'copyright' => $this->copyright,
+            'notes' => $this->notes,
+            'metadata' => $metadata,
         ]);
 
+        $this->showSettingsModal = false;
+        $this->dispatch('settings-updated');
         $this->dispatch('saved');
     }
 
@@ -121,7 +144,7 @@ new #[Title('Crossword Editor')] class extends Component {
         }
 
         return ClueEntry::where('answer', $answer)
-            ->where('crossword_id', '!=', $this->crosswordId)
+            ->where(fn ($q) => $q->whereNull('crossword_id')->orWhere('crossword_id', '!=', $this->crosswordId))
             ->with(['user:id,name', 'crossword:id,title'])
             ->latest()
             ->limit(20)
@@ -157,7 +180,7 @@ new #[Title('Crossword Editor')] class extends Component {
 
         // Renumber the grid
         $numberer = app(GridNumberer::class);
-        $result = $numberer->number($newGrid, $this->resizeWidth, $this->resizeHeight);
+        $result = $numberer->number($newGrid, $this->resizeWidth, $this->resizeHeight, [], $this->minAnswerLength);
 
         $this->width = $this->resizeWidth;
         $this->height = $this->resizeHeight;
@@ -178,7 +201,7 @@ new #[Title('Crossword Editor')] class extends Component {
             'clues_down' => [],
         ]);
 
-        $this->showResizeModal = false;
+        $this->showSettingsModal = false;
         $this->dispatch('grid-resized');
     }
 
@@ -235,15 +258,17 @@ new #[Title('Crossword Editor')] class extends Component {
             styles: @js($styles ?? []),
             cluesAcross: @js($cluesAcross),
             cluesDown: @js($cluesDown),
+            minAnswerLength: @js($minAnswerLength),
         })"
         x-on:saved.window="onSaved()"
         x-on:grid-resized.window="onGridResized()"
+        x-on:settings-updated.window="onSettingsUpdated()"
         class="flex h-full flex-col"
     >
         {{-- Toolbar --}}
         <div class="mb-4 flex flex-wrap items-center gap-2">
-            {{-- Metadata --}}
-            <div class="flex flex-1 gap-2">
+            {{-- Title --}}
+            <div class="flex flex-1 items-center gap-2">
                 <flux:input
                     size="sm"
                     placeholder="{{ __('Puzzle title') }}"
@@ -251,24 +276,31 @@ new #[Title('Crossword Editor')] class extends Component {
                     wire:change="saveMetadata"
                     class="max-w-48"
                 />
-                <flux:input
-                    size="sm"
-                    placeholder="{{ __('Author') }}"
-                    wire:model.blur="author"
-                    wire:change="saveMetadata"
-                    class="max-w-36"
-                />
             </div>
 
             <div class="flex items-center gap-1">
+                {{-- Save status --}}
+                <div class="flex items-center gap-1 pl-2 text-sm text-zinc-400">
+                    <template x-if="saving">
+                        <span>{{ __('Saving...') }}</span>
+                    </template>
+                    <template x-if="showSaved">
+                        <span class="text-emerald-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="inline size-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
+                            {{ __('Saved') }}
+                        </span>
+                    </template>
+                </div>
+
                 {{-- Mode toggle --}}
                 <div class="flex rounded-lg border border-zinc-200 dark:border-zinc-700">
                     <span class="rounded-l-lg bg-zinc-800 px-3 py-1 text-sm font-medium text-white dark:bg-zinc-200 dark:text-zinc-900">{{ __('Edit') }}</span>
-                    <a
-                        href="{{ route('crosswords.solver', $crosswordId) }}"
-                        x-on:click.prevent="saveAndSolve()"
+                    <button
+                        type="button"
+                        data-solve-url="{{ route('crosswords.solver', $crosswordId) }}"
+                        x-on:click="saveAndSolve()"
                         class="rounded-r-lg px-3 py-1 text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                    >{{ __('Solve') }}</a>
+                    >{{ __('Solve') }}</button>
                 </div>
 
                 {{-- Symmetry --}}
@@ -285,26 +317,11 @@ new #[Title('Crossword Editor')] class extends Component {
                     </button>
                 </flux:tooltip>
 
-                {{-- Circle annotation --}}
-                <flux:tooltip content="{{ __('Toggle circle') }}">
-                    <button
-                        x-on:click="toggleCircle()"
-                        class="rounded-lg p-1.5 text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10" />
-                        </svg>
-                    </button>
-                </flux:tooltip>
-
-                {{-- Resize --}}
-                <flux:tooltip content="{{ __('Resize grid') }}">
-                    <flux:button variant="ghost" size="sm" icon="arrows-pointing-out" wire:click="$set('showResizeModal', true)" />
-                </flux:tooltip>
-
                 {{-- Clear dropdown --}}
                 <flux:dropdown position="bottom" align="end">
-                    <flux:button variant="ghost" size="sm" icon="x-mark" />
+                    <flux:tooltip content="{{ __('Clear Options') }}">
+                        <flux:button variant="ghost" size="sm" icon="x-mark" />
+                    </flux:tooltip>
                     <flux:menu>
                         <flux:menu.item x-on:click="clearLetters()">{{ __('Clear letters') }}</flux:menu.item>
                         <flux:menu.item x-on:click="clearAll()" class="text-red-600 dark:text-red-400">{{ __('Clear everything') }}</flux:menu.item>
@@ -332,24 +349,16 @@ new #[Title('Crossword Editor')] class extends Component {
                         <flux:menu.item wire:click="exportJpz">{{ __('.jpz (Crossword Compiler)') }}</flux:menu.item>
                     </flux:menu>
                 </flux:dropdown>
-
-                {{-- Save status --}}
-                <div class="flex items-center gap-1 pl-2 text-sm text-zinc-400">
-                    <template x-if="saving">
-                        <span>{{ __('Saving...') }}</span>
-                    </template>
-                    <template x-if="showSaved">
-                        <span class="text-emerald-500">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="inline size-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
-                            {{ __('Saved') }}
-                        </span>
-                    </template>
-                </div>
             </div>
+
+            {{-- Settings --}}
+            <flux:tooltip content="{{ __('Puzzle settings') }}">
+                <flux:button variant="ghost" size="sm" icon="cog-6-tooth" wire:click="$set('showSettingsModal', true)" />
+            </flux:tooltip>
         </div>
 
         {{-- Main editor layout --}}
-        <div class="flex flex-1 gap-4 overflow-hidden max-lg:flex-col">
+        <div class="flex flex-1 gap-4 overflow-hidden max-lg:flex-col lg:max-h-[calc(100dvh-8rem)]">
             {{-- Across clues panel (desktop) --}}
             <div class="hidden w-64 flex-col overflow-hidden lg:flex">
                 <flux:heading size="sm" class="mb-2 shrink-0">{{ __('Across') }}</flux:heading>
@@ -357,6 +366,9 @@ new #[Title('Crossword Editor')] class extends Component {
                     <template x-for="clue in computedCluesAcross" :key="'across-' + clue.number">
                         <div
                             x-on:click="selectClue('across', clue.number, $event)"
+                            x-on:focusin="selectClue('across', clue.number, $event)"
+                            x-on:keydown.tab.prevent="focusNextClue($el, 'across', false)"
+                            x-on:keydown.shift.tab.prevent="focusNextClue($el, 'across', true)"
                             :class="activeClueNumber === clue.number && direction === 'across' ? 'bg-blue-100 dark:bg-blue-900/40' : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/50'"
                             class="cursor-pointer rounded px-2 py-1"
                             :id="'clue-across-' + clue.number"
@@ -368,16 +380,28 @@ new #[Title('Crossword Editor')] class extends Component {
                                         type="text"
                                         x-model="clue.clue"
                                         x-on:blur="markDirty()"
-                                        x-on:focus="debouncedFetchSuggestions()"
                                         placeholder="{{ __('Enter clue...') }}"
                                         class="w-full border-0 bg-transparent p-0 text-sm text-zinc-700 placeholder-zinc-400 focus:ring-0 dark:text-zinc-300 dark:placeholder-zinc-500"
                                     />
-                                    <span class="text-xs text-zinc-400 cursor-text" x-text="'(' + clue.length + ')'" x-on:click="$event.target.previousElementSibling.focus()"></span>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-xs text-zinc-400 cursor-text" x-text="'(' + clue.length + ')'" x-on:click="$event.target.closest('.clue-content').querySelector('input').focus()"></span>
+                                        <button
+                                            type="button"
+                                            x-on:click.stop="toggleSuggestions()"
+                                            x-show="activeClueNumber === clue.number && direction === 'across'"
+                                            class="inline-flex items-center rounded px-1 py-0.5 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
+                                            :title="showSuggestions ? '{{ __('Hide clue library') }}' : '{{ __('Show clue library') }}'"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="size-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M9 4.804A7.968 7.968 0 0 0 5.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 0 1 5.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0 1 14.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0 0 14.5 4c-1.669 0-3.218.51-4.5 1.385V15" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
                             {{-- Clue suggestions --}}
-                            <template x-if="activeClueNumber === clue.number && direction === 'across' && (clueSuggestions.length > 0 || clueSuggestionsLoading)">
+                            <template x-if="activeClueNumber === clue.number && direction === 'across' && showSuggestions && (clueSuggestions.length > 0 || clueSuggestionsLoading)">
                                 <div class="mt-1 ml-5 border-l-2 border-amber-300 pl-2 dark:border-amber-600">
                                     <template x-if="clueSuggestionsLoading">
                                         <span class="text-xs text-zinc-400 italic">{{ __('Loading suggestions...') }}</span>
@@ -508,6 +532,9 @@ new #[Title('Crossword Editor')] class extends Component {
                     <template x-for="clue in computedCluesDown" :key="'down-' + clue.number">
                         <div
                             x-on:click="selectClue('down', clue.number, $event)"
+                            x-on:focusin="selectClue('down', clue.number, $event)"
+                            x-on:keydown.tab.prevent="focusNextClue($el, 'down', false)"
+                            x-on:keydown.shift.tab.prevent="focusNextClue($el, 'down', true)"
                             :class="activeClueNumber === clue.number && direction === 'down' ? 'bg-blue-100 dark:bg-blue-900/40' : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/50'"
                             class="cursor-pointer rounded px-2 py-1"
                             :id="'clue-down-' + clue.number"
@@ -519,16 +546,28 @@ new #[Title('Crossword Editor')] class extends Component {
                                         type="text"
                                         x-model="clue.clue"
                                         x-on:blur="markDirty()"
-                                        x-on:focus="debouncedFetchSuggestions()"
                                         placeholder="{{ __('Enter clue...') }}"
                                         class="w-full border-0 bg-transparent p-0 text-sm text-zinc-700 placeholder-zinc-400 focus:ring-0 dark:text-zinc-300 dark:placeholder-zinc-500"
                                     />
-                                    <span class="text-xs text-zinc-400 cursor-text" x-text="'(' + clue.length + ')'" x-on:click="$event.target.previousElementSibling.focus()"></span>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-xs text-zinc-400 cursor-text" x-text="'(' + clue.length + ')'" x-on:click="$event.target.closest('.clue-content').querySelector('input').focus()"></span>
+                                        <button
+                                            type="button"
+                                            x-on:click.stop="toggleSuggestions()"
+                                            x-show="activeClueNumber === clue.number && direction === 'down'"
+                                            class="inline-flex items-center rounded px-1 py-0.5 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
+                                            :title="showSuggestions ? '{{ __('Hide clue library') }}' : '{{ __('Show clue library') }}'"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="size-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M9 4.804A7.968 7.968 0 0 0 5.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 0 1 5.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0 1 14.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0 0 14.5 4c-1.669 0-3.218.51-4.5 1.385V15" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
                             {{-- Clue suggestions --}}
-                            <template x-if="activeClueNumber === clue.number && direction === 'down' && (clueSuggestions.length > 0 || clueSuggestionsLoading)">
+                            <template x-if="activeClueNumber === clue.number && direction === 'down' && showSuggestions && (clueSuggestions.length > 0 || clueSuggestionsLoading)">
                                 <div class="mt-1 ml-5 border-l-2 border-amber-300 pl-2 dark:border-amber-600">
                                     <template x-if="clueSuggestionsLoading">
                                         <span class="text-xs text-zinc-400 italic">{{ __('Loading suggestions...') }}</span>
@@ -575,6 +614,9 @@ new #[Title('Crossword Editor')] class extends Component {
                             <template x-for="clue in computedCluesAcross" :key="'m-across-' + clue.number">
                                 <div
                                     x-on:click="selectClue('across', clue.number, $event)"
+                                    x-on:focusin="selectClue('across', clue.number, $event)"
+                                    x-on:keydown.tab.prevent="focusNextClue($el, 'across', false)"
+                                    x-on:keydown.shift.tab.prevent="focusNextClue($el, 'across', true)"
                                     :class="activeClueNumber === clue.number && direction === 'across' ? 'bg-blue-100 dark:bg-blue-900/40' : ''"
                                     class="cursor-pointer rounded px-2 py-1"
                                 >
@@ -585,16 +627,28 @@ new #[Title('Crossword Editor')] class extends Component {
                                                 type="text"
                                                 x-model="clue.clue"
                                                 x-on:blur="markDirty()"
-                                                x-on:focus="debouncedFetchSuggestions()"
                                                 placeholder="{{ __('Enter clue...') }}"
                                                 class="w-full border-0 bg-transparent p-0 text-sm text-zinc-700 placeholder-zinc-400 focus:ring-0 dark:text-zinc-300 dark:placeholder-zinc-500"
                                             />
-                                            <span class="text-xs text-zinc-400" x-text="'(' + clue.length + ')'"></span>
+                                            <div class="flex items-center gap-1">
+                                                <span class="text-xs text-zinc-400" x-text="'(' + clue.length + ')'"></span>
+                                                <button
+                                                    type="button"
+                                                    x-on:click.stop="toggleSuggestions()"
+                                                    x-show="activeClueNumber === clue.number && direction === 'across'"
+                                                    class="inline-flex items-center rounded px-1 py-0.5 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
+                                                    :title="showSuggestions ? '{{ __('Hide clue library') }}' : '{{ __('Show clue library') }}'"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="size-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path d="M9 4.804A7.968 7.968 0 0 0 5.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 0 1 5.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0 1 14.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0 0 14.5 4c-1.669 0-3.218.51-4.5 1.385V15" />
+                                                    </svg>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
 
                                     {{-- Clue suggestions (mobile) --}}
-                                    <template x-if="activeClueNumber === clue.number && direction === 'across' && clueSuggestions.length > 0 && !clueSuggestionsLoading">
+                                    <template x-if="activeClueNumber === clue.number && direction === 'across' && showSuggestions && clueSuggestions.length > 0 && !clueSuggestionsLoading">
                                         <div class="mt-1 ml-5 border-l-2 border-amber-300 pl-2 dark:border-amber-600">
                                             <span class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ __('Clue library') }}</span>
                                             <template x-for="(suggestion, idx) in clueSuggestions.slice(0, 5)" :key="'msa-' + idx">
@@ -616,6 +670,9 @@ new #[Title('Crossword Editor')] class extends Component {
                             <template x-for="clue in computedCluesDown" :key="'m-down-' + clue.number">
                                 <div
                                     x-on:click="selectClue('down', clue.number, $event)"
+                                    x-on:focusin="selectClue('down', clue.number, $event)"
+                                    x-on:keydown.tab.prevent="focusNextClue($el, 'down', false)"
+                                    x-on:keydown.shift.tab.prevent="focusNextClue($el, 'down', true)"
                                     :class="activeClueNumber === clue.number && direction === 'down' ? 'bg-blue-100 dark:bg-blue-900/40' : ''"
                                     class="cursor-pointer rounded px-2 py-1"
                                 >
@@ -626,16 +683,28 @@ new #[Title('Crossword Editor')] class extends Component {
                                                 type="text"
                                                 x-model="clue.clue"
                                                 x-on:blur="markDirty()"
-                                                x-on:focus="debouncedFetchSuggestions()"
                                                 placeholder="{{ __('Enter clue...') }}"
                                                 class="w-full border-0 bg-transparent p-0 text-sm text-zinc-700 placeholder-zinc-400 focus:ring-0 dark:text-zinc-300 dark:placeholder-zinc-500"
                                             />
-                                            <span class="text-xs text-zinc-400" x-text="'(' + clue.length + ')'"></span>
+                                            <div class="flex items-center gap-1">
+                                                <span class="text-xs text-zinc-400" x-text="'(' + clue.length + ')'"></span>
+                                                <button
+                                                    type="button"
+                                                    x-on:click.stop="toggleSuggestions()"
+                                                    x-show="activeClueNumber === clue.number && direction === 'down'"
+                                                    class="inline-flex items-center rounded px-1 py-0.5 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
+                                                    :title="showSuggestions ? '{{ __('Hide clue library') }}' : '{{ __('Show clue library') }}'"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="size-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path d="M9 4.804A7.968 7.968 0 0 0 5.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 0 1 5.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0 1 14.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0 0 14.5 4c-1.669 0-3.218.51-4.5 1.385V15" />
+                                                    </svg>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
 
                                     {{-- Clue suggestions (mobile) --}}
-                                    <template x-if="activeClueNumber === clue.number && direction === 'down' && clueSuggestions.length > 0 && !clueSuggestionsLoading">
+                                    <template x-if="activeClueNumber === clue.number && direction === 'down' && showSuggestions && clueSuggestions.length > 0 && !clueSuggestionsLoading">
                                         <div class="mt-1 ml-5 border-l-2 border-amber-300 pl-2 dark:border-amber-600">
                                             <span class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ __('Clue library') }}</span>
                                             <template x-for="(suggestion, idx) in clueSuggestions.slice(0, 5)" :key="'msd-' + idx">
@@ -656,30 +725,73 @@ new #[Title('Crossword Editor')] class extends Component {
             </div>
         </div>
 
-        {{-- Resize Modal --}}
-        <flux:modal wire:model="showResizeModal">
-        <div class="space-y-6">
-            <flux:heading size="lg">{{ __('Resize Grid') }}</flux:heading>
-            <flux:text>{{ __('Existing content will be preserved where dimensions overlap. Clues will be reset.') }}</flux:text>
+        {{-- Settings Modal --}}
+        <flux:modal wire:model="showSettingsModal">
+            <div class="space-y-6">
+                <flux:heading size="lg">{{ __('Puzzle Settings') }}</flux:heading>
 
-            <div class="grid grid-cols-2 gap-4">
                 <flux:field>
-                    <flux:label>{{ __('Width') }}</flux:label>
-                    <flux:input type="number" wire:model="resizeWidth" min="3" max="30" />
-                    <flux:error name="resizeWidth" />
+                    <flux:label>{{ __('Title') }}</flux:label>
+                    <flux:input wire:model="title" placeholder="{{ __('Puzzle title') }}" />
+                    <flux:error name="title" />
                 </flux:field>
 
                 <flux:field>
-                    <flux:label>{{ __('Height') }}</flux:label>
-                    <flux:input type="number" wire:model="resizeHeight" min="3" max="30" />
-                    <flux:error name="resizeHeight" />
+                    <flux:label>{{ __('Constructor') }}</flux:label>
+                    <flux:input wire:model="author" placeholder="{{ __('Constructor name') }}" />
+                    <flux:error name="author" />
                 </flux:field>
-            </div>
 
-            <div class="flex justify-end gap-2">
-                <flux:button wire:click="$set('showResizeModal', false)">{{ __('Cancel') }}</flux:button>
-                <flux:button variant="primary" wire:click="resizeGrid">{{ __('Resize') }}</flux:button>
-            </div>
+                <flux:field>
+                    <flux:label>{{ __('Copyright') }}</flux:label>
+                    <flux:input wire:model="copyright" placeholder="{{ __('© 2026 Your Name') }}" />
+                    <flux:error name="copyright" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>{{ __('Minimum Answer Length') }}</flux:label>
+                    <flux:input type="number" wire:model="minAnswerLength" min="1" max="15" />
+                    <flux:description>{{ __('Shortest allowed word length in the grid.') }}</flux:description>
+                    <flux:error name="minAnswerLength" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>{{ __('Notes') }}</flux:label>
+                    <flux:textarea wire:model="notes" placeholder="{{ __('Notes for solvers (shown before solving)') }}" rows="3" />
+                    <flux:error name="notes" />
+                </flux:field>
+
+                <flux:separator />
+
+                <div>
+                    <flux:heading size="sm">{{ __('Grid Size') }}</flux:heading>
+                    <flux:text size="sm" class="mt-1">{{ __('Existing content will be preserved where dimensions overlap. Clues will be reset.') }}</flux:text>
+
+                    <div class="mt-3 grid grid-cols-2 gap-4">
+                        <flux:field>
+                            <flux:label>{{ __('Width') }}</flux:label>
+                            <flux:input type="number" wire:model="resizeWidth" min="3" max="30" />
+                            <flux:error name="resizeWidth" />
+                        </flux:field>
+
+                        <flux:field>
+                            <flux:label>{{ __('Height') }}</flux:label>
+                            <flux:input type="number" wire:model="resizeHeight" min="3" max="30" />
+                            <flux:error name="resizeHeight" />
+                        </flux:field>
+                    </div>
+
+                    <div class="mt-3 flex justify-end">
+                        <flux:button variant="danger" size="sm" wire:click="resizeGrid">{{ __('Resize Grid') }}</flux:button>
+                    </div>
+                </div>
+
+                <flux:separator />
+
+                <div class="flex justify-end gap-2">
+                    <flux:button wire:click="$set('showSettingsModal', false)">{{ __('Cancel') }}</flux:button>
+                    <flux:button variant="primary" wire:click="saveMetadata">{{ __('Save') }}</flux:button>
+                </div>
             </div>
         </flux:modal>
 </div>

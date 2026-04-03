@@ -18,7 +18,7 @@ class GridNumberer
      *     down: array<int, array{number: int, row: int, col: int, length: int}>
      * }
      */
-    public function number(array $grid, int $width, int $height, array $styles = []): array
+    public function number(array $grid, int $width, int $height, array $styles = [], int $minLength = 2): array
     {
         $numbered = $grid;
         $across = [];
@@ -42,25 +42,31 @@ class GridNumberer
                 $startsAcross = $this->startsAcross($grid, $row, $col, $width, $styles);
                 $startsDown = $this->startsDown($grid, $row, $col, $height, $styles);
 
-                if ($startsAcross || $startsDown) {
+                $acrossLen = $startsAcross ? $this->wordLength($grid, $row, $col, $width, 'across', $styles) : 0;
+                $downLen = $startsDown ? $this->wordLength($grid, $row, $col, $height, 'down', $styles) : 0;
+
+                $hasAcross = $startsAcross && $acrossLen >= $minLength;
+                $hasDown = $startsDown && $downLen >= $minLength;
+
+                if ($hasAcross || $hasDown) {
                     $clueNumber++;
                     $numbered[$row][$col] = $clueNumber;
 
-                    if ($startsAcross) {
+                    if ($hasAcross) {
                         $across[] = [
                             'number' => $clueNumber,
                             'row' => $row,
                             'col' => $col,
-                            'length' => $this->wordLength($grid, $row, $col, $width, 'across', $styles),
+                            'length' => $acrossLen,
                         ];
                     }
 
-                    if ($startsDown) {
+                    if ($hasDown) {
                         $down[] = [
                             'number' => $clueNumber,
                             'row' => $row,
                             'col' => $col,
-                            'length' => $this->wordLength($grid, $row, $col, $height, 'down', $styles),
+                            'length' => $downLen,
                         ];
                     }
                 } else {

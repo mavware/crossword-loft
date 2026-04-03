@@ -5,25 +5,27 @@ use App\Models\CrosswordLike;
 use App\Models\User;
 use Livewire\Livewire;
 
-test('users can like a crossword from the solving page', function () {
+test('users can like a crossword from the discovery component', function () {
     $user = User::factory()->create();
-    $crossword = Crossword::factory()->published()->create();
+    $creator = User::factory()->create();
+    $crossword = Crossword::factory()->published()->for($creator)->create();
 
     Livewire::actingAs($user)
-        ->test('pages::crosswords.solving')
+        ->test('puzzle-discovery', ['excludeAttempted' => true])
         ->call('toggleLike', $crossword->id);
 
     expect(CrosswordLike::where('user_id', $user->id)->where('crossword_id', $crossword->id)->exists())->toBeTrue();
 });
 
-test('users can unlike a crossword from the solving page', function () {
+test('users can unlike a crossword from the discovery component', function () {
     $user = User::factory()->create();
-    $crossword = Crossword::factory()->published()->create();
+    $creator = User::factory()->create();
+    $crossword = Crossword::factory()->published()->for($creator)->create();
 
     CrosswordLike::create(['user_id' => $user->id, 'crossword_id' => $crossword->id]);
 
     Livewire::actingAs($user)
-        ->test('pages::crosswords.solving')
+        ->test('puzzle-discovery', ['excludeAttempted' => true])
         ->call('toggleLike', $crossword->id);
 
     expect(CrosswordLike::where('user_id', $user->id)->where('crossword_id', $crossword->id)->exists())->toBeFalse();
@@ -31,12 +33,13 @@ test('users can unlike a crossword from the solving page', function () {
 
 test('like count is displayed on puzzle cards', function () {
     $user = User::factory()->create();
-    $crossword = Crossword::factory()->published()->create(['title' => 'Likeable Puzzle']);
+    $creator = User::factory()->create();
+    $crossword = Crossword::factory()->published()->for($creator)->create(['title' => 'Likeable Puzzle']);
 
     CrosswordLike::factory()->count(3)->create(['crossword_id' => $crossword->id]);
 
     Livewire::actingAs($user)
-        ->test('pages::crosswords.solving')
+        ->test('puzzle-discovery', ['excludeAttempted' => true])
         ->assertSee('Likeable Puzzle');
 });
 
@@ -78,10 +81,11 @@ test('solver page shows like count', function () {
 
 test('users cannot like the same crossword twice', function () {
     $user = User::factory()->create();
-    $crossword = Crossword::factory()->published()->create();
+    $creator = User::factory()->create();
+    $crossword = Crossword::factory()->published()->for($creator)->create();
 
     Livewire::actingAs($user)
-        ->test('pages::crosswords.solving')
+        ->test('puzzle-discovery', ['excludeAttempted' => true])
         ->call('toggleLike', $crossword->id)
         ->call('toggleLike', $crossword->id);
 

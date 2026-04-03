@@ -292,6 +292,44 @@ it('handles both bars and blocks in the same grid', function () {
         ->and($result['down'][2])->toMatchArray(['number' => 4, 'row' => 1, 'col' => 2, 'length' => 2]);
 });
 
+it('filters out words shorter than minLength', function () {
+    // Standard 3x3 mini crossword:
+    // [1] [2] [#]    across: 1-across (len 2), 3-across (len 3), 5-across (len 2)
+    // [3] [ ] [4]    down: 1-down (len 2), 2-down (len 3), 4-down (len 2)
+    // [#] [5] [ ]
+    $grid = [
+        [0, 0, '#'],
+        [0, 0, 0],
+        ['#', 0, 0],
+    ];
+
+    // With minLength=3, only length-3 words should have clues
+    $result = $this->numberer->number($grid, 3, 3, [], 3);
+
+    // Only 3-across (len 3), 2-down (len 3) qualify
+    expect($result['across'])->toHaveCount(1)
+        ->and($result['across'][0])->toMatchArray(['length' => 3])
+        ->and($result['down'])->toHaveCount(1)
+        ->and($result['down'][0])->toMatchArray(['length' => 3]);
+
+    // Cells that only started short words should be 0 (no clue number)
+    // (0,0) started 1-across(2) and 1-down(2) — both too short, so 0
+    expect($result['grid'][0][0])->toBe(0);
+});
+
+it('defaults minLength to 2 preserving backward compatibility', function () {
+    $grid = [
+        [0, 0, '#'],
+        [0, 0, 0],
+        ['#', 0, 0],
+    ];
+
+    $withDefault = $this->numberer->number($grid, 3, 3);
+    $withExplicit = $this->numberer->number($grid, 3, 3, [], 2);
+
+    expect($withDefault)->toBe($withExplicit);
+});
+
 it('preserves existing behavior when no styles are passed', function () {
     $grid = [
         [0, 0, '#'],

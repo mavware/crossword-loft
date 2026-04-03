@@ -19,7 +19,7 @@ test('solving page shows user attempts', function () {
         ->assertSee($creator->name);
 });
 
-test('solving page shows available published puzzles', function () {
+test('solving page shows available published puzzles via discovery component', function () {
     $user = User::factory()->create();
     $creator = User::factory()->create();
     Crossword::factory()->published()->for($creator)->create(['title' => 'Public Puzzle']);
@@ -27,22 +27,22 @@ test('solving page shows available published puzzles', function () {
 
     $this->actingAs($user);
 
-    Livewire::test('pages::crosswords.solving')
+    Livewire::test('puzzle-discovery', ['excludeAttempted' => true])
         ->assertSee('Public Puzzle')
         ->assertDontSee('Private Puzzle');
 });
 
-test('solving page does not show own puzzles in browse section', function () {
+test('discovery component shows own published puzzles', function () {
     $user = User::factory()->create();
     Crossword::factory()->published()->for($user)->create(['title' => 'My Own Puzzle']);
 
     $this->actingAs($user);
 
-    Livewire::test('pages::crosswords.solving')
-        ->assertDontSee('My Own Puzzle');
+    Livewire::test('puzzle-discovery', ['excludeAttempted' => true])
+        ->assertSee('My Own Puzzle');
 });
 
-test('solving page does not show already attempted puzzles in browse section', function () {
+test('discovery component does not show already attempted puzzles', function () {
     $user = User::factory()->create();
     $creator = User::factory()->create();
     $crossword = Crossword::factory()->published()->for($creator)->create(['title' => 'Already Started']);
@@ -51,20 +51,18 @@ test('solving page does not show already attempted puzzles in browse section', f
 
     $this->actingAs($user);
 
-    // Should appear in attempts but not in browse
-    Livewire::test('pages::crosswords.solving')
-        ->assertSee('Already Started')
-        ->assertDontSee('Start Solving');
+    Livewire::test('puzzle-discovery', ['excludeAttempted' => true])
+        ->assertDontSee('Already Started');
 });
 
-test('user can start solving a published puzzle', function () {
+test('user can start solving a published puzzle via discovery component', function () {
     $user = User::factory()->create();
     $creator = User::factory()->create();
     $crossword = Crossword::factory()->published()->for($creator)->create();
 
     $this->actingAs($user);
 
-    Livewire::test('pages::crosswords.solving')
+    Livewire::test('puzzle-discovery', ['excludeAttempted' => true])
         ->call('startSolving', $crossword->id)
         ->assertRedirect(route('crosswords.solver', $crossword));
 });
@@ -76,7 +74,7 @@ test('user cannot start solving an unpublished puzzle they do not own', function
 
     $this->actingAs($user);
 
-    Livewire::test('pages::crosswords.solving')
+    Livewire::test('puzzle-discovery')
         ->call('startSolving', $crossword->id)
         ->assertForbidden();
 });
@@ -107,7 +105,7 @@ test('user cannot remove another users attempt', function () {
         ->assertStatus(403);
 });
 
-test('solving page search filters available puzzles', function () {
+test('discovery component search filters available puzzles', function () {
     $user = User::factory()->create();
     $creator = User::factory()->create();
     Crossword::factory()->published()->for($creator)->create(['title' => 'Ocean Theme']);
@@ -115,7 +113,7 @@ test('solving page search filters available puzzles', function () {
 
     $this->actingAs($user);
 
-    Livewire::test('pages::crosswords.solving')
+    Livewire::test('puzzle-discovery', ['excludeAttempted' => true])
         ->set('search', 'Ocean')
         ->assertSee('Ocean Theme')
         ->assertDontSee('Space Theme');

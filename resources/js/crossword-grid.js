@@ -1,4 +1,4 @@
-export function crosswordGrid({ width, height, grid, solution, styles, cluesAcross, cluesDown }) {
+export function crosswordGrid({ width, height, grid, solution, styles, cluesAcross, cluesDown, minAnswerLength }) {
     return {
         width,
         height,
@@ -7,6 +7,7 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
         styles: styles || {},
         cluesAcross: cluesAcross || [],
         cluesDown: cluesDown || [],
+        minAnswerLength: minAnswerLength || 3,
         selectedRow: -1,
         selectedCol: -1,
         direction: 'across',
@@ -22,7 +23,6 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
         contextMenu: { show: false, row: -1, col: -1, x: 0, y: 0 },
         _saveTimer: null,
         _savedTimer: null,
-        _suggestTimer: null,
         _longPressTimer: null,
 
         init() {
@@ -32,11 +32,11 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
             });
 
             this.$watch('activeClueNumber', () => {
-                this.debouncedFetchSuggestions();
+                this.closeSuggestions();
             });
 
             this.$watch('direction', () => {
-                this.debouncedFetchSuggestions();
+                this.closeSuggestions();
             });
 
             window.addEventListener('beforeunload', (e) => {
@@ -74,6 +74,7 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
 
         // --- Grid numbering (mirrors PHP GridNumberer) ---
         numberGrid() {
+            const minLen = this.minAnswerLength || 2;
             const numbered = this.grid.map(row => row.map(cell => cell === '#' ? '#' : (cell === null ? null : 0)));
             const acrossSlots = [];
             const downSlots = [];
@@ -86,19 +87,30 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
                     const startsAcross = this.hasLeftBoundary(row, col) && !this.hasRightBoundary(row, col);
                     const startsDown = this.hasTopBoundary(row, col) && !this.hasBottomBoundary(row, col);
 
-                    if (startsAcross || startsDown) {
+                    let acrossLen = 0;
+                    let downLen = 0;
+
+                    if (startsAcross) {
+                        acrossLen = 1;
+                        while (!this.hasRightBoundary(row, col + acrossLen - 1)) acrossLen++;
+                    }
+                    if (startsDown) {
+                        downLen = 1;
+                        while (!this.hasBottomBoundary(row + downLen - 1, col)) downLen++;
+                    }
+
+                    const hasAcross = startsAcross && acrossLen >= minLen;
+                    const hasDown = startsDown && downLen >= minLen;
+
+                    if (hasAcross || hasDown) {
                         clueNum++;
                         numbered[row][col] = clueNum;
 
-                        if (startsAcross) {
-                            let len = 1;
-                            while (!this.hasRightBoundary(row, col + len - 1)) len++;
-                            acrossSlots.push({ number: clueNum, row, col, length: len });
+                        if (hasAcross) {
+                            acrossSlots.push({ number: clueNum, row, col, length: acrossLen });
                         }
-                        if (startsDown) {
-                            let len = 1;
-                            while (!this.hasBottomBoundary(row + len - 1, col)) len++;
-                            downSlots.push({ number: clueNum, row, col, length: len });
+                        if (hasDown) {
+                            downSlots.push({ number: clueNum, row, col, length: downLen });
                         }
                     }
                 }
@@ -279,6 +291,25 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
                         return;
                     }
                 }
+            }
+        },
+
+        focusNextClue(currentEl, dir, reverse) {
+            const parent = currentEl.parentElement;
+            const siblings = [...parent.children].filter(el => el.nodeType === 1);
+            const idx = siblings.indexOf(currentEl);
+            if (idx < 0) return;
+
+            let nextIdx = reverse
+                ? (idx <= 0 ? siblings.length - 1 : idx - 1)
+                : (idx >= siblings.length - 1 ? 0 : idx + 1);
+
+            const nextClue = siblings[nextIdx];
+            const input = nextClue.querySelector('input');
+            if (input) {
+                input.focus();
+            } else {
+                nextClue.focus();
             }
         },
 
@@ -669,6 +700,15 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
             }, 2000);
         },
 
+        onSettingsUpdated() {
+            const newMin = this.$wire.minAnswerLength;
+            if (newMin !== this.minAnswerLength) {
+                this.minAnswerLength = newMin;
+                this.numberGrid();
+                this.markDirty();
+            }
+        },
+
         onGridResized() {
             // Re-sync from Livewire after resize
             this.width = this.$wire.width;
@@ -684,6 +724,9 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
         },
 
         async saveAndSolve() {
+            const solveUrl = this.$el.querySelector('[data-solve-url]')?.dataset.solveUrl;
+            if (!solveUrl) return;
+
             if (this.isDirty) {
                 await this.$wire.save(
                     JSON.parse(JSON.stringify(this.grid)),
@@ -693,7 +736,7 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
                     JSON.parse(JSON.stringify(this.cluesDown)),
                 );
             }
-            window.location.href = this.$el.querySelector('a[href*="/solve"]').href;
+            Livewire.navigate(solveUrl);
         },
 
         // --- Clue suggestions ---
@@ -712,9 +755,23 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
             return word.toUpperCase();
         },
 
-        debouncedFetchSuggestions() {
-            clearTimeout(this._suggestTimer);
-            this._suggestTimer = setTimeout(() => this.fetchClueSuggestions(), 200);
+        showSuggestions: false,
+
+        toggleSuggestions() {
+            if (this.showSuggestions) {
+                this.closeSuggestions();
+            } else {
+                this.showSuggestions = true;
+                this.clueSuggestionsWord = '';
+                this.fetchClueSuggestions();
+            }
+        },
+
+        closeSuggestions() {
+            this.showSuggestions = false;
+            this.clueSuggestions = [];
+            this.clueSuggestionsWord = '';
+            this.clueSuggestionsLoading = false;
         },
 
         async fetchClueSuggestions() {
@@ -747,6 +804,7 @@ export function crosswordGrid({ width, height, grid, solution, styles, cluesAcro
 
         useClue(clue, text) {
             clue.clue = text;
+            this.closeSuggestions();
             this.markDirty();
         },
     };

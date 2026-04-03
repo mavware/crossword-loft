@@ -212,6 +212,25 @@ export function crosswordSolver({ width, height, grid, solution, progress, style
             }
         },
 
+        focusNextClue(currentEl, dir, reverse) {
+            const parent = currentEl.parentElement;
+            const siblings = [...parent.children].filter(el => el.nodeType === 1);
+            const idx = siblings.indexOf(currentEl);
+            if (idx < 0) return;
+
+            let nextIdx = reverse
+                ? (idx <= 0 ? siblings.length - 1 : idx - 1)
+                : (idx >= siblings.length - 1 ? 0 : idx + 1);
+
+            const nextClue = siblings[nextIdx];
+            const input = nextClue.querySelector('input');
+            if (input) {
+                input.focus();
+            } else {
+                nextClue.focus();
+            }
+        },
+
         scrollActiveClueIntoView() {
             this.$nextTick(() => {
                 const num = this.activeClueNumber;
